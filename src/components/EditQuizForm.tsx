@@ -29,17 +29,21 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Save,
+  ArrowLeft,
 } from 'lucide-react';
 import { Separator } from './ui/separator';
 import { Textarea } from './ui/textarea';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { CategorySuggestions } from './CategorySuggestions';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Badge } from './ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { useCreateQuiz, useUpload } from '@/hooks/use-queries';
+import { useUpdateQuiz, useUpload } from '@/hooks/use-queries';
 import { useRouter } from 'next/navigation';
 import { Alert, AlertDescription } from './ui/alert';
+import { Quiz } from '@/lib/types';
+import Link from 'next/link';
 
 const questionSchema = z.object({
   text: z.string().min(5, 'Question text must be at least 5 characters.'),
@@ -68,11 +72,16 @@ const quizFormSchema = z.object({
   questions: z
     .array(questionSchema)
     .min(1, 'A quiz must have at least one question.'),
+  status: z.enum(['draft', 'published']),
 });
 
 type QuizFormValues = z.infer<typeof quizFormSchema>;
 
-export function CreateQuizForm() {
+interface EditQuizFormProps {
+  quiz: Quiz;
+}
+
+export function EditQuizForm({ quiz }: EditQuizFormProps) {
   const [categories, setCategories] = useState<string[]>([]);
   const [categoryInput, setCategoryInput] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState<{
@@ -82,27 +91,34 @@ export function CreateQuizForm() {
   const router = useRouter();
 
   // Backend hooks
-  const createQuiz = useCreateQuiz();
+  const updateQuiz = useUpdateQuiz();
   const uploadFile = useUpload();
+
+  // Transform quiz data to form format
+  const transformQuizToForm = (quiz: Quiz): QuizFormValues => {
+    return {
+      title: quiz.title,
+      description: quiz.description || '',
+      categories: quiz.categories,
+      status: quiz.status,
+      questions: quiz.questions.map((question) => ({
+        text: question.text,
+        type: question.type,
+        options: question.options.map((option) => ({ text: option.text })),
+        correctAnswer:
+          question.options.find(
+            (_, index) => index.toString() === question.correctAnswer
+          )?.text || '',
+        time: question.time,
+        points: question.points,
+        mediaUrl: question.mediaUrl || '',
+      })),
+    };
+  };
 
   const form = useForm<QuizFormValues>({
     resolver: zodResolver(quizFormSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      categories: [],
-      questions: [
-        {
-          text: '',
-          type: 'multiple-choice',
-          options: [{ text: '' }, { text: '' }, { text: '' }, { text: '' }],
-          correctAnswer: '',
-          time: 30,
-          points: 1000,
-          mediaUrl: '',
-        },
-      ],
-    },
+    defaultValues: transformQuizToForm(quiz),
     mode: 'onChange',
   });
 
@@ -111,14 +127,20 @@ export function CreateQuizForm() {
     name: 'questions',
   });
 
+  // Initialize categories from quiz data
+  useEffect(() => {
+    setCategories(quiz.categories);
+  }, [quiz.categories]);
+
   // Transform form data to match backend API format
   const transformQuizData = (data: QuizFormValues) => {
     return {
       title: data.title,
       description: data.description || '',
       categories: data.categories,
+      status: data.status,
       questions: data.questions.map((question, index) => ({
-        id: `q${index + 1}`, // Generate question IDs
+        id: quiz.questions[index]?.id || `q${index + 1}`, // Keep existing IDs or generate new ones
         text: question.text,
         type: question.type,
         options: question.options.map((option, optionIndex) => ({
@@ -140,22 +162,22 @@ export function CreateQuizForm() {
       // Transform the form data to match backend API format
       const quizData = transformQuizData(data);
 
-      // Create the quiz via API
-      const createdQuiz = await createQuiz.mutateAsync(quizData);
+      // Update the quiz via API
+      await updateQuiz.mutateAsync({ id: quiz.id, data: quizData });
 
       toast({
-        title: 'Quiz Created Successfully!',
-        description: `"${createdQuiz.title}" has been saved. You can now host a game or publish it.`,
+        title: 'Quiz Updated Successfully!',
+        description: `"${quizData.title}" has been updated.`,
         variant: 'default',
       });
 
-      // Redirect to dashboard or quiz detail page
+      // Redirect to dashboard
       router.push('/dashboard');
     } catch (error) {
-      console.error('Failed to create quiz:', error);
+      console.error('Failed to update quiz:', error);
       toast({
-        title: 'Failed to Create Quiz',
-        description: 'There was an error creating your quiz. Please try again.',
+        title: 'Failed to Update Quiz',
+        description: 'There was an error updating your quiz. Please try again.',
         variant: 'destructive',
       });
     }
@@ -230,22 +252,32 @@ export function CreateQuizForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        {/* Show error if quiz creation fails */}
-        {createQuiz.error && (
+        {/* Show error if quiz update fails */}
+        {updateQuiz.error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Failed to create quiz. Please check if the backend is running and
+              Failed to update quiz. Please check if the backend is running and
               try again.
             </AlertDescription>
           </Alert>
         )}
 
+        {/* Back to Dashboard Button */}
+        <div className="flex items-center gap-4">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Quiz Details</CardTitle>
             <CardDescription>
-              Give your quiz a catchy title and a brief description.
+              Update your quiz title, description, and settings.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -274,6 +306,39 @@ export function CreateQuizForm() {
                   <FormControl>
                     <Textarea placeholder="A fun quiz about... " {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="status"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>Quiz Status</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex gap-4"
+                    >
+                      <FormItem className="flex items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="draft" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Draft</FormLabel>
+                      </FormItem>
+                      <FormItem className="flex items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <RadioGroupItem value="published" />
+                        </FormControl>
+                        <FormLabel className="font-normal">Published</FormLabel>
+                      </FormItem>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormDescription>
+                    Only published quizzes can be used to host games.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -343,7 +408,7 @@ export function CreateQuizForm() {
                 <div>
                   <CardTitle>Question {index + 1}</CardTitle>
                   <CardDescription>
-                    Design this question for your players.
+                    Update this question for your players.
                   </CardDescription>
                 </div>
                 <Button
@@ -511,7 +576,7 @@ export function CreateQuizForm() {
                     <FormItem className="space-y-3">
                       <FormLabel>Answer Options</FormLabel>
                       <FormDescription>
-                        Enter the options and select the correct answer.
+                        Update the options and select the correct answer.
                       </FormDescription>
                       <FormControl>
                         <RadioGroup
@@ -612,14 +677,17 @@ export function CreateQuizForm() {
             Add Question
           </Button>
 
-          <Button type="submit" size="lg" disabled={createQuiz.isPending}>
-            {createQuiz.isPending ? (
+          <Button type="submit" size="lg" disabled={updateQuiz.isPending}>
+            {updateQuiz.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating Quiz...
+                Updating Quiz...
               </>
             ) : (
-              'Create Quiz'
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Update Quiz
+              </>
             )}
           </Button>
         </div>
