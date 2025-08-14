@@ -1,15 +1,42 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import io, { Socket } from 'socket.io-client';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
 
-export function useSocket() {
+// Host socket hook with authentication
+export function useHostSocket() {
   const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    socketRef.current = io(SOCKET_URL);
+    const token = localStorage.getItem('authToken');
+
+    if (!token) {
+      setError('Authentication token required');
+      return;
+    }
+
+    // Connect to host namespace with authentication
+    socketRef.current = io(`${SOCKET_URL}/host`, {
+      auth: { token }
+    });
+
+    socketRef.current.on('connect', () => {
+      setIsConnected(true);
+      setError(null);
+    });
+
+    socketRef.current.on('connect_error', (err) => {
+      setIsConnected(false);
+      setError(err.message || 'Connection failed');
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setIsConnected(false);
+    });
 
     return () => {
       socketRef.current?.disconnect();
@@ -17,26 +44,94 @@ export function useSocket() {
   }, []);
 
   const emit = useCallback((event: string, data: any) => {
-    socketRef.current?.emit(event, data);
+    if (!socketRef.current) {
+      setError('Socket not connected');
+      return;
+    }
+    socketRef.current.emit(event, data);
   }, []);
 
   const on = useCallback((event: string, callback: (data: any) => void) => {
-    socketRef.current?.on(event, callback);
-    
+    if (!socketRef.current) return;
+
+    socketRef.current.on(event, callback);
+
     return () => {
       socketRef.current?.off(event, callback);
     };
   }, []);
 
-  return { emit, on, socket: socketRef.current };
+  return {
+    emit,
+    on,
+    socket: socketRef.current,
+    isConnected,
+    error
+  };
 }
 
-// Specific game socket hook
-export function useGameSocket(gameId?: string) {
-  const { emit, on } = useSocket();
+// Player socket hook (no authentication needed)
+export function usePlayerSocket() {
+  const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const initGame = useCallback((gameId: string) => {
-    emit('host:init_game', { gameId });
+  useEffect(() => {
+    // Connect to player namespace
+    socketRef.current = io(`${SOCKET_URL}/player`);
+
+    socketRef.current.on('connect', () => {
+      setIsConnected(true);
+      setError(null);
+    });
+
+    socketRef.current.on('connect_error', (err) => {
+      setIsConnected(false);
+      setError(err.message || 'Connection failed');
+    });
+
+    socketRef.current.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    return () => {
+      socketRef.current?.disconnect();
+    };
+  }, []);
+
+  const emit = useCallback((event: string, data: any) => {
+    if (!socketRef.current) {
+      setError('Socket not connected');
+      return;
+    }
+    socketRef.current.emit(event, data);
+  }, []);
+
+  const on = useCallback((event: string, callback: (data: any) => void) => {
+    if (!socketRef.current) return;
+
+    socketRef.current.on(event, callback);
+
+    return () => {
+      socketRef.current?.off(event, callback);
+    };
+  }, []);
+
+  return {
+    emit,
+    on,
+    socket: socketRef.current,
+    isConnected,
+    error
+  };
+}
+
+// Host game management hook
+export function useHostGameSocket() {
+  const { emit, on, isConnected, error } = useHostSocket();
+
+  const initGame = useCallback((quizId: string) => {
+    emit('host:init_game', { quizId });
   }, [emit]);
 
   const startGame = useCallback((gameId: string) => {
@@ -55,8 +150,29 @@ export function useGameSocket(gameId?: string) {
     emit('host:end_game', { gameId });
   }, [emit]);
 
-  const joinGame = useCallback((pin: string, name: string, playerId: string) => {
-    emit('player:join', { pin, name, playerId });
+  return {
+    // Host actions
+    initGame,
+    startGame,
+    nextQuestion,
+    revealAnswer,
+    endGame,
+
+    // Event listeners
+    on,
+
+    // Connection state
+    isConnected,
+    error,
+  };
+}
+
+// Player game hook
+export function usePlayerGameSocket() {
+  const { emit, on, isConnected, error } = usePlayerSocket();
+
+  const joinGame = useCallback((pin: string, playerId: string) => {
+    emit('player:join', { pin, playerId });
   }, [emit]);
 
   const submitAnswer = useCallback((data: {
@@ -69,18 +185,20 @@ export function useGameSocket(gameId?: string) {
   }, [emit]);
 
   return {
-    // Host actions
-    initGame,
-    startGame,
-    nextQuestion,
-    revealAnswer,
-    endGame,
-    
     // Player actions
     joinGame,
     submitAnswer,
-    
+
     // Event listeners
     on,
+
+    // Connection state
+    isConnected,
+    error,
   };
+}
+
+// Legacy compatibility hook (deprecated - use specific hooks above)
+export function useGameSocket() {
+  return useHostGameSocket();
 }

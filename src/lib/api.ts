@@ -2,6 +2,33 @@ import { Quiz, GameSession, CreateGameResponse, JoinGameResponse } from './types
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://0.0.0.0:3001/api';
 
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('authToken');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
+
+export const authApi = {
+  login: async (credentials: { username: string; password: string }) => {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    if (!response.ok) throw new Error('Login failed');
+    return response.json();
+  },
+
+  generateGuestToken: async (quizId: string) => {
+    const response = await fetch(`${API_BASE}/auth/guest-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quizId }),
+    });
+    if (!response.ok) throw new Error('Failed to generate guest token');
+    return response.json();
+  },
+};
+
 export const api = {
   // Quiz endpoints
   quiz: {
@@ -20,7 +47,10 @@ export const api = {
     create: async (data: Partial<Quiz>): Promise<Quiz> => {
       const response = await fetch(`${API_BASE}/quizzes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(data),
       });
       if (!response.ok) throw new Error('Failed to create quiz');
@@ -30,7 +60,10 @@ export const api = {
     update: async (id: string, data: Partial<Quiz>): Promise<{ message: string }> => {
       const response = await fetch(`${API_BASE}/quizzes/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(data),
       });
       if (!response.ok) throw new Error('Failed to update quiz');
@@ -40,6 +73,10 @@ export const api = {
     delete: async (id: string): Promise<{ message: string }> => {
       const response = await fetch(`${API_BASE}/quizzes/${id}`, {
         method: 'DELETE',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(),
+        },
       });
       if (!response.ok) throw new Error('Failed to delete quiz');
       return response.json();

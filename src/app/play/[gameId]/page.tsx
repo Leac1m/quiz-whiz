@@ -3,12 +3,21 @@
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, Loader2, Timer, Users } from 'lucide-react';
+import {
+  CheckCircle,
+  Loader2,
+  Timer,
+  Users,
+  Wifi,
+  WifiOff,
+  AlertCircle,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { useGameSocket } from '@/hooks/use-socket';
+import { usePlayerGameSocket } from '@/hooks/use-socket';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Player {
   id: string;
@@ -116,7 +125,7 @@ export default function PlayerGamePage({
   const searchParams = useSearchParams();
   const playerId = searchParams.get('playerId') || '';
   const playerName = searchParams.get('name') || '';
-  const Gamepin = searchParams.get('pin') || '';
+  const gamePin = searchParams.get('pin') || '';
   const { toast } = useToast();
 
   // Game state
@@ -129,21 +138,48 @@ export default function PlayerGamePage({
   const [leaderboard, setLeaderboard] = useState<Player[]>([]);
   const [playerScore, setPlayerScore] = useState(0);
 
-  // WebSocket connection
-  const { submitAnswer, joinGame, on } = useGameSocket();
+  // WebSocket connection (player namespace)
+  const {
+    submitAnswer,
+    joinGame,
+    on,
+    isConnected,
+    error: socketError,
+  } = usePlayerGameSocket();
 
   // Join the game via WebSocket when component mounts
   useEffect(() => {
-    if (playerId && playerName) {
+    if (playerId && playerName && gamePin && isConnected) {
       // Player already joined via REST API, now connect to WebSocket
-      joinGame(Gamepin, playerName, playerId);
+      joinGame(gamePin, playerId);
       setGameState('lobby');
     }
-  }, [playerId, playerName]);
+  }, [playerId, playerName, gamePin, isConnected, joinGame]);
+
+  // Handle socket connection errors
+  useEffect(() => {
+    if (socketError) {
+      toast({
+        title: 'Connection Error',
+        description: socketError,
+        variant: 'destructive',
+      });
+    }
+  }, [socketError, toast]);
 
   // WebSocket event listeners
   useEffect(() => {
+    if (!isConnected) return;
+
     const unsubscribe = [
+      on('player:joined', (data: { playerId: string; gameId: string }) => {
+        toast({
+          title: 'Joined Game!',
+          description: 'Successfully connected to the game.',
+        });
+        setGameState('lobby');
+      }),
+
       on('game:lobby_update', (data: { players: Player[] }) => {
         setPlayers(data.players);
         setGameState('lobby');
@@ -181,6 +217,13 @@ export default function PlayerGamePage({
         }
       }),
 
+      on('answer:submitted', (data: { points: number }) => {
+        toast({
+          title: 'Answer Submitted!',
+          description: `You earned ${data.points} points!`,
+        });
+      }),
+
       on('game:leaderboard', (data: { players: Player[] }) => {
         setLeaderboard(data.players);
         setGameState('leaderboard');
@@ -209,7 +252,7 @@ export default function PlayerGamePage({
     return () => {
       unsubscribe.forEach((fn) => fn && fn());
     };
-  }, [on, playerId, selectedAnswer, hasAnswered, toast]);
+  }, [on, playerId, selectedAnswer, hasAnswered, toast, isConnected]);
 
   const handleAnswerSelect = (choiceId: string) => {
     if (hasAnswered || gameState !== 'question') return;
@@ -224,24 +267,49 @@ export default function PlayerGamePage({
       choiceId,
       timeTaken: (currentQuestion?.timeLimit || 30) - timeLeft,
     });
-
-    toast({
-      title: 'Answer Submitted!',
-      description: 'Waiting for other players...',
-    });
   };
 
-  // Waiting for game to start
-  if (gameState === 'waiting') {
+  // Connection error state
+  if (socketError && !isConnected) {
+    return (
+      <div className="flex flex-col min-h-screen bg-gray-800 text-white">
+        <div className="flex-grow flex items-center justify-center p-4">
+          <Alert variant="destructive" className="max-w-md">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Unable to connect to the game server. Please check your connection
+              and try again.
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => window.location.reload()}
+              >
+                Try Again
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    );
+  }
+
+  // Waiting for connection or game data
+  if (gameState === 'waiting' || !isConnected) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-800 text-white">
         <div className="flex-grow flex items-center justify-center p-4">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Connecting to Game...</h1>
+            <h1 className="text-2xl font-bold mb-2">
+              {!isConnected ? 'Connecting to Game...' : 'Joining Game...'}
+            </h1>
             <p className="text-gray-400">
               Please wait while we connect you to the game.
             </p>
+            {socketError && (
+              <p className="text-red-400 mt-2 text-sm">{socketError}</p>
+            )}
           </div>
         </div>
       </div>
@@ -253,7 +321,14 @@ export default function PlayerGamePage({
     return (
       <div className="flex flex-col min-h-screen bg-gray-800 text-white">
         <header className="p-4 bg-gray-900/50 text-center">
-          <h1 className="text-2xl font-bold">Welcome, {playerName}!</h1>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <h1 className="text-2xl font-bold">Welcome, {playerName}!</h1>
+            {isConnected ? (
+              <Wifi className="h-5 w-5 text-green-400" />
+            ) : (
+              <WifiOff className="h-5 w-5 text-red-400" />
+            )}
+          </div>
           <p className="text-gray-400">
             Waiting for the host to start the game...
           </p>
@@ -290,6 +365,14 @@ export default function PlayerGamePage({
 
   // Question phase
   if (gameState === 'question' && currentQuestion) {
+    const choiceIcons = [TriangleIcon, DiamondIcon, CircleIcon, SquareIcon];
+    const choiceColors = [
+      'bg-red-600 hover:bg-red-700',
+      'bg-blue-600 hover:bg-blue-700',
+      'bg-yellow-600 hover:bg-yellow-700',
+      'bg-green-600 hover:bg-green-700',
+    ];
+
     return (
       <div className="flex flex-col min-h-screen bg-gray-800 text-white">
         <header className="p-4 bg-gray-900/50 text-center">
@@ -307,28 +390,38 @@ export default function PlayerGamePage({
             {currentQuestion.question}
           </h1>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
-            {currentQuestion.choices.map((choice, index) => (
-              <Button
-                key={choice.id}
-                variant={selectedAnswer === choice.id ? 'default' : 'outline'}
-                size="lg"
-                className={`h-16 text-lg font-semibold ${
-                  selectedAnswer === choice.id
-                    ? 'bg-blue-600 hover:bg-blue-700'
-                    : 'bg-gray-700 hover:bg-gray-600'
-                }`}
-                onClick={() => handleAnswerSelect(choice.id)}
-                disabled={hasAnswered}
-              >
-                <span className="mr-3">{String.fromCharCode(65 + index)}.</span>
-                {choice.text}
-              </Button>
-            ))}
+            {currentQuestion.choices.map((choice, index) => {
+              const IconComponent = choiceIcons[index % choiceIcons.length];
+              const colorClass = choiceColors[index % choiceColors.length];
+
+              return (
+                <Button
+                  key={choice.id}
+                  variant="ghost"
+                  size="lg"
+                  className={`h-20 text-lg font-semibold text-white border-2 border-white/20 ${
+                    selectedAnswer === choice.id
+                      ? `${colorClass} border-white`
+                      : `hover:${colorClass} bg-gray-700`
+                  }`}
+                  onClick={() => handleAnswerSelect(choice.id)}
+                  disabled={hasAnswered}
+                >
+                  <div className="flex items-center gap-3">
+                    <IconComponent className="h-6 w-6" />
+                    <span>{choice.text}</span>
+                  </div>
+                </Button>
+              );
+            })}
           </div>
           {hasAnswered && (
-            <p className="mt-4 text-green-400 font-semibold">
-              Answer submitted! Waiting for results...
-            </p>
+            <div className="mt-6 text-center">
+              <CheckCircle className="h-8 w-8 text-green-400 mx-auto mb-2" />
+              <p className="text-green-400 font-semibold">
+                Answer submitted! Waiting for results...
+              </p>
+            </div>
           )}
         </main>
       </div>
@@ -382,6 +475,14 @@ export default function PlayerGamePage({
               </div>
             ))}
           </div>
+          {gameState === 'finished' && (
+            <Button
+              className="mt-8"
+              onClick={() => (window.location.href = '/')}
+            >
+              Play Again
+            </Button>
+          )}
         </main>
       </div>
     );

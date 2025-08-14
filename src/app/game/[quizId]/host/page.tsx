@@ -12,12 +12,14 @@ import {
   Loader2,
   AlertCircle,
   Timer,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { useQuiz } from '@/hooks/use-queries';
-import { useGameSocket } from '@/hooks/use-socket';
+import { useHostGameSocket } from '@/hooks/use-socket';
 import { useToast } from '@/hooks/use-toast';
 
 interface Player {
@@ -37,6 +39,7 @@ interface GameData {
     choices: { id: string; text: string }[];
     timeLimit: number;
     questionNumber: number;
+    totalQuestions: number;
   };
   leaderboard?: Player[];
   timeLeft?: number;
@@ -51,13 +54,14 @@ type GameState = 'lobby' | 'question' | 'reveal' | 'leaderboard' | 'finished';
 export default function HostGamePage({
   params,
 }: {
-  params: { gameId: string };
+  params: { quizId: string };
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
- 
-  // } = useQuiz(quizId);
+
+  // Get quiz data for the game
+  // const { data: quiz, isLoading: quizLoading, error: quizError } = useQuiz(params.gameId);
 
   // Game state
   const [gameState, setGameState] = useState<GameState>('lobby');
@@ -68,34 +72,63 @@ export default function HostGamePage({
     currentQuestion: 0,
     totalQuestions: 0,
   });
-  const [isIntializingGame, setIsInitializingGame] = useState(true);
+  const [isInitializingGame, setIsInitializingGame] = useState(true);
 
-  // WebSocket connection
-  const { startGame, initGame, nextQuestion, revealAnswer, endGame, on } =
-    useGameSocket();
+  // WebSocket connection with authentication
+  const {
+    startGame,
+    initGame,
+    nextQuestion,
+    revealAnswer,
+    endGame,
+    on,
+    isConnected,
+    error: socketError,
+  } = useHostGameSocket();
 
-  // Initialize game
+  // Initialize game when component mounts and quiz is loaded
   useEffect(() => {
-      initGame(params.gameId)
-  }, [])
+    if (isConnected) {
+      initGame(params.quizId);
+    }
+  }, [isConnected, initGame]);
 
+  // Handle socket connection errors
+  useEffect(() => {
+    if (socketError) {
+      toast({
+        title: 'Connection Error',
+        description: socketError,
+        variant: 'destructive',
+      });
+
+      if (socketError.includes('Authentication')) {
+        router.push('/login');
+      }
+    }
+  }, [socketError, toast, router]);
 
   // WebSocket event listeners
   useEffect(() => {
+    if (!isConnected) return;
+
     const unsubscribe = [
-      on('game:init', (data: { gameId: string; pin: string, totalQuestions: number }) => {
-        setGameData((prev) => ({
-          ...prev,
-          gameId: data.gameId,
-          pin: data.pin,
-          totalQuestions: data.totalQuestions
-        }));
-        setIsInitializingGame(false);
-        toast({
-          title: 'Game Created!',
-          description: `Game PIN: ${data.pin}`,
-        });
-      }),
+      on(
+        'game:init',
+        (data: { gameId: string; pin: string; totalQuestions: number }) => {
+          setGameData((prev) => ({
+            ...prev,
+            gameId: data.gameId,
+            pin: data.pin,
+            totalQuestions: data.totalQuestions,
+          }));
+          setIsInitializingGame(false);
+          toast({
+            title: 'Game Created!',
+            description: `Game PIN: ${data.pin}`,
+          });
+        }
+      ),
 
       on('game:lobby_update', (data: { players: Player[] }) => {
         setGameData((prev) => ({ ...prev, players: data.players }));
@@ -154,8 +187,7 @@ export default function HostGamePage({
     return () => {
       unsubscribe.forEach((fn) => fn && fn());
     };
-  }, [on, toast]);
-
+  }, [on, toast, isConnected]);
 
   const handleStartGame = () => {
     if (gameData.gameId && gameData.players.length > 0) {
@@ -184,20 +216,25 @@ export default function HostGamePage({
   const handleEndGame = () => {
     if (gameData.gameId) {
       endGame(gameData.gameId);
-      router.push('/dashboard');
-    } else {
-      router.push('/dashboard');
     }
+    router.push('/dashboard');
   };
 
   // Loading state
-  if (isIntializingGame) {
+  if (isInitializingGame || !isConnected) {
     return (
       <div className="flex flex-col min-h-screen bg-gray-800 text-white">
         <div className="flex-grow flex items-center justify-center">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-            <p>{ 'Hosting game...'}</p>
+            <p>
+              {!isConnected
+                ? 'Connecting to server...'
+                : 'Initializing game...'}
+            </p>
+            {socketError && (
+              <p className="text-red-400 mt-2 text-sm">{socketError}</p>
+            )}
           </div>
         </div>
       </div>
@@ -232,10 +269,17 @@ export default function HostGamePage({
   return (
     <div className="flex flex-col min-h-screen bg-gray-800 text-white">
       <header className="flex justify-between items-center p-4 bg-gray-900/50">
-        <h1 className="font-bold font-headline text-xl">{"quiz.title"}</h1>
-        <Button variant="destructive" size="sm" onClick={handleEndGame}>
-          <XCircle className="mr-2 h-4 w-4" /> End Game
-        </Button>
+        <h1 className="font-bold font-headline text-xl">{'quiz.title'}</h1>
+        <div className="flex items-center gap-2">
+          {isConnected ? (
+            <Wifi className="h-4 w-4 text-green-400" />
+          ) : (
+            <WifiOff className="h-4 w-4 text-red-400" />
+          )}
+          <Button variant="destructive" size="sm" onClick={handleEndGame}>
+            <XCircle className="mr-2 h-4 w-4" /> End Game
+          </Button>
+        </div>
       </header>
 
       {gameState === 'lobby' && (
