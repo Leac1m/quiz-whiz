@@ -165,7 +165,9 @@ export default function PlayerGamePage({
         setGameState('reveal');
 
         // Show if player got it right
-        if (selectedAnswer === data.correctChoiceId) {
+        const { correctChoiceId } = data;
+        const index = +correctChoiceId;
+        if (selectedAnswer === currentQuestion?.choices[index].id) {
           toast({
             title: 'Correct! 🎉',
             description: 'Great job!',
@@ -173,7 +175,7 @@ export default function PlayerGamePage({
         } else if (hasAnswered) {
           toast({
             title: 'Incorrect 😔',
-            description: `The correct answer was ${data.correctChoiceId}`,
+            description: `The correct answer was ${currentQuestion?.choices[index].id}`,
             variant: 'destructive',
           });
         }
