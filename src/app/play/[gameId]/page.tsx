@@ -129,9 +129,23 @@ export default function PlayerGamePage({
   const { toast } = useToast();
 
   // Game state
-  const [gameState, setGameState] = useState<GameState>('waiting');
+  const [gameState, setGameState] = useState<GameState>('lobby');
   const [players, setPlayers] = useState<Player[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>( // Change back to null
+  // For testing
+    // {
+    //   question: "How long can a string get?",
+    //   choices: [
+    //     { id: 1, text: "A Short Text" },
+    //     { id: 2, text: "A Fairly Long Text" },
+    //     { id: 3, text: "A Fairly very Long Text" },
+    //     { id: 4, text: "A Fairly very very very very Long Text" },
+    //   ],
+    //   timeLimit: 50,
+    //   questionNumber: 0,
+    //   totalQuestions: 1,
+    // }
+    );
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
   const [hasAnswered, setHasAnswered] = useState(false);
@@ -389,7 +403,7 @@ export default function PlayerGamePage({
           <h1 className="text-2xl font-bold mb-8 text-center max-w-2xl">
             {currentQuestion.question}
           </h1>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full responsicve-grid">
             {currentQuestion.choices.map((choice, index) => {
               const IconComponent = choiceIcons[index % choiceIcons.length];
               const colorClass = choiceColors[index % choiceColors.length];
@@ -399,7 +413,7 @@ export default function PlayerGamePage({
                   key={choice.id}
                   variant="ghost"
                   size="lg"
-                  className={`h-20 text-lg font-semibold text-white border-2 border-white/20 ${
+                  className={`h-auto py-3 text-lg font-semibold text-white border-2 border-white/20 ${
                     selectedAnswer === choice.id
                       ? `${colorClass} border-white`
                       : `hover:${colorClass} bg-gray-700`
@@ -407,7 +421,7 @@ export default function PlayerGamePage({
                   onClick={() => handleAnswerSelect(choice.id)}
                   disabled={hasAnswered}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 whitespace-normal break-words">
                     <IconComponent className="h-6 w-6" />
                     <span>{choice.text}</span>
                   </div>

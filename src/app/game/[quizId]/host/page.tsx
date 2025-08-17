@@ -59,6 +59,7 @@ export default function HostGamePage({
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
+  const gameId = searchParams.get('gameId');
 
   // Get quiz data for the game
   // const { data: quiz, isLoading: quizLoading, error: quizError } = useQuiz(params.gameId);
@@ -71,6 +72,7 @@ export default function HostGamePage({
     players: [],
     currentQuestion: 0,
     totalQuestions: 0,
+
   });
   const [isInitializingGame, setIsInitializingGame] = useState(true);
 
@@ -89,7 +91,7 @@ export default function HostGamePage({
   // Initialize game when component mounts and quiz is loaded
   useEffect(() => {
     if (isConnected) {
-      initGame(params.quizId);
+      initGame(gameId);
     }
   }, [isConnected, initGame]);
 

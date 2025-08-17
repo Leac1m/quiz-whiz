@@ -81,4 +81,8 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  .responsicve-grid {
+    max-width: 90rem;
+  }
 }

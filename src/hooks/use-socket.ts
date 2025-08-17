@@ -130,8 +130,8 @@ export function usePlayerSocket() {
 export function useHostGameSocket() {
   const { emit, on, isConnected, error } = useHostSocket();
 
-  const initGame = useCallback((quizId: string) => {
-    emit('host:init_game', { quizId });
+  const initGame = useCallback((gameId: string) => {
+    emit('host:init_game', { gameId });
   }, [emit]);
 
   const startGame = useCallback((gameId: string) => {
