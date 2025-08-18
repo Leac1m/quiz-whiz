@@ -19,23 +19,28 @@ export function useHostSocket() {
       return;
     }
 
-    // Connect to host namespace with authentication
+    // Connect to host namespace with authentication and better error handling
     socketRef.current = io(`${SOCKET_URL}/host`, {
-      auth: { token }
+      auth: { token },
+      timeout: 10000, // 10 second connection timeout
+      transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
     });
 
     socketRef.current.on('connect', () => {
       setIsConnected(true);
       setError(null);
+      console.log('Host socket connected');
     });
 
     socketRef.current.on('connect_error', (err) => {
       setIsConnected(false);
       setError(err.message || 'Connection failed');
+      console.error('Host socket connection error:', err);
     });
 
     socketRef.current.on('disconnect', () => {
       setIsConnected(false);
+      console.log('Host socket disconnected');
     });
 
     return () => {
@@ -77,21 +82,27 @@ export function usePlayerSocket() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Connect to player namespace
-    socketRef.current = io(`${SOCKET_URL}/player`);
+    // Connect to player namespace with better error handling
+    socketRef.current = io(`${SOCKET_URL}/player`, {
+      timeout: 10000,
+      transports: ['websocket', 'polling'],
+    });
 
     socketRef.current.on('connect', () => {
       setIsConnected(true);
       setError(null);
+      console.log('Player socket connected');
     });
 
     socketRef.current.on('connect_error', (err) => {
       setIsConnected(false);
       setError(err.message || 'Connection failed');
+      console.error('Player socket connection error:', err);
     });
 
     socketRef.current.on('disconnect', () => {
       setIsConnected(false);
+      console.log('Player socket disconnected');
     });
 
     return () => {
@@ -151,23 +162,17 @@ export function useHostGameSocket() {
   }, [emit]);
 
   return {
-    // Host actions
     initGame,
     startGame,
     nextQuestion,
     revealAnswer,
     endGame,
-
-    // Event listeners
     on,
-
-    // Connection state
     isConnected,
     error,
   };
 }
 
-// Player game hook
 export function usePlayerGameSocket() {
   const { emit, on, isConnected, error } = usePlayerSocket();
 
@@ -185,20 +190,15 @@ export function usePlayerGameSocket() {
   }, [emit]);
 
   return {
-    // Player actions
     joinGame,
     submitAnswer,
-
-    // Event listeners
     on,
-
-    // Connection state
     isConnected,
     error,
   };
 }
 
-// Legacy compatibility hook (deprecated - use specific hooks above)
+// Legacy compatibility hook
 export function useGameSocket() {
   return useHostGameSocket();
 }

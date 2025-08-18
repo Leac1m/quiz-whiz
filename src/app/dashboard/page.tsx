@@ -118,8 +118,7 @@ export default function DashboardPage() {
           <Alert variant="destructive" className="max-w-md mx-auto">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              Failed to load quizzes. Please check if the backend is running on
-              localhost:3001.
+              Failed to load quizzes. Please check if the backend is running on.
               <Button
                 variant="outline"
                 size="sm"
