@@ -84,7 +84,6 @@ export default function LoginPage() {
       <main className="flex-grow flex items-center justify-center p-4">
         <div className="flex flex-col items-center text-center w-full max-w-md">
           <Logo />
-          <h1 className="text-3xl font-bold font-headline mt-4 mb-2">Host Login</h1>
           <p className="text-muted-foreground mb-8">
             Sign in to create and manage your quizzes
           </p>
@@ -177,8 +176,10 @@ export default function LoginPage() {
           <div className="mt-6 text-sm text-muted-foreground">
             <p>
               Don't have an account?{' '}
+              
               <Button asChild variant="link" className="p-0 h-auto">
-                <Link href="/register">Create one here</Link>
+                {/* <Link href="/register">Create one here</Link> */}
+                <div className="p"> username: host, password: password </div>
               </Button>
             </p>
           </div>
